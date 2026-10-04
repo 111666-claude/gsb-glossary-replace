@@ -1,0 +1,4 @@
+# term<TAB>priority<TAB>replacement
+a	1	X
+ab	1	Y
+b	1	c
