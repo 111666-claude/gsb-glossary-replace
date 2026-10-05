@@ -1,7 +1,8 @@
-"""术语表替换：按最长匹配优先替换，同长度按优先级降序。
+"""术语表替换：每个位置取能匹配到的最长术语，同长度按优先级降序、再按术语字典序升序。
 
-缺陷：按登记顺序替换（不做最长匹配）、替换结果会被后面的术语再次匹配、重复登记不查优先级、
-每次替换全扫术语表。
+实现：字典树单趟扫描，左到右每个位置沿树走到不能走为止，取途中最后一条术语（即最长匹配）；
+替换结果不再参与匹配，不链式替换；同一术语重复登记返回 False 且不覆盖已有规则；
+代价只随文本长度增长，不随术语数乘文本长度增长。
 """
 
 
@@ -22,26 +23,56 @@ class Glossary:
     """术语台账。"""
 
     def __init__(self, terms):
-        self.terms = terms
+        self._root = {}
+        self._size = 0
         self.hits = 0
         self.work = 0
+        for item in terms:
+            self.add(item["term"], item["priority"], item["to"])
 
     def add(self, term, priority, replacement):
-        """登记一条术语，返回是否成功。缺陷：重复 term 不查优先级，直接追加。"""
-        self.terms.append({"term": term, "priority": priority, "to": replacement})
+        """登记一条术语，返回是否成功；重复登记返回 False 且不覆盖已有规则。"""
+        if not term:
+            return False
+        node = self._root
+        for char in term:
+            node = node.setdefault(char, {})
+        if None in node:
+            return False
+        node[None] = replacement
+        self._size += 1
         return True
 
     def replace(self, text):
-        """替换一段文本，返回 (结果, 命中次数)。缺陷：不做最长匹配、链式再替换、全扫术语表。"""
-        out = text
+        """替换一段文本，返回 (结果, 命中次数)。左到右单趟扫描，替换结果不再匹配。"""
+        out = []
         hits = 0
-        for item in self.terms:
-            self.work += 1
-            if item["term"] and item["term"] in out:
-                hits += out.count(item["term"])
-                out = out.replace(item["term"], item["to"])
+        index = 0
+        length = len(text)
+        while index < length:
+            node = self._root
+            best_to = None
+            best_end = index
+            cursor = index
+            while cursor < length:
+                self.work += 1
+                nxt = node.get(text[cursor])
+                if nxt is None:
+                    break
+                node = nxt
+                cursor += 1
+                if None in node:
+                    best_to = node[None]
+                    best_end = cursor
+            if best_to is not None:
+                out.append(best_to)
+                hits += 1
+                index = best_end
+            else:
+                out.append(text[index])
+                index += 1
         self.hits += hits
-        return out, hits
+        return "".join(out), hits
 
     def work_count(self):
         return self.work
