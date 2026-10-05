@@ -1,8 +1,4 @@
-"""术语表替换：按最长匹配优先替换，同长度按优先级降序。
-
-缺陷：按登记顺序替换（不做最长匹配）、替换结果会被后面的术语再次匹配、重复登记不查优先级、
-每次替换全扫术语表。
-"""
+"""术语表替换：每个位置取最长匹配，同术语按优先级取优，左到右单次扫描不链式替换。"""
 
 
 def load_terms(path):
@@ -18,30 +14,75 @@ def load_terms(path):
     return terms
 
 
+class _Node:
+    """字典树节点。entry 非空表示有术语在此结束。"""
+
+    __slots__ = ("children", "entry")
+
+    def __init__(self):
+        self.children = {}
+        self.entry = None
+
+
 class Glossary:
-    """术语台账。"""
+    """术语台账：字典树索引，处理一行文本的代价不随术语总数增长。"""
 
     def __init__(self, terms):
-        self.terms = terms
+        self._root = _Node()
+        self._entries = {}
         self.hits = 0
         self.work = 0
+        for item in terms:
+            self.add(item["term"], item["priority"], item["to"])
 
     def add(self, term, priority, replacement):
-        """登记一条术语，返回是否成功。缺陷：重复 term 不查优先级，直接追加。"""
-        self.terms.append({"term": term, "priority": priority, "to": replacement})
+        """登记一条术语。重复登记返回 False：优先级更高则取优，否则保留已有规则。"""
+        if not term:
+            return False
+        existing = self._entries.get(term)
+        if existing is not None:
+            if priority > existing["priority"]:
+                existing["priority"] = priority
+                existing["to"] = replacement
+            return False
+        entry = {"term": term, "priority": priority, "to": replacement}
+        self._entries[term] = entry
+        node = self._root
+        for char in term:
+            node = node.children.setdefault(char, _Node())
+        node.entry = entry
         return True
 
     def replace(self, text):
-        """替换一段文本，返回 (结果, 命中次数)。缺陷：不做最长匹配、链式再替换、全扫术语表。"""
-        out = text
+        """左到右扫描一次，每个位置取最长匹配，替换结果不再参与匹配。"""
+        out = []
         hits = 0
-        for item in self.terms:
-            self.work += 1
-            if item["term"] and item["term"] in out:
-                hits += out.count(item["term"])
-                out = out.replace(item["term"], item["to"])
+        index = 0
+        length = len(text)
+        root = self._root
+        while index < length:
+            node = root
+            best_end = 0
+            best_entry = None
+            cursor = index
+            while cursor < length:
+                self.work += 1
+                node = node.children.get(text[cursor])
+                if node is None:
+                    break
+                cursor += 1
+                if node.entry is not None:
+                    best_end = cursor
+                    best_entry = node.entry
+            if best_entry is None:
+                out.append(text[index])
+                index += 1
+            else:
+                out.append(best_entry["to"])
+                hits += 1
+                index = best_end
         self.hits += hits
-        return out, hits
+        return "".join(out), hits
 
     def work_count(self):
         return self.work

@@ -6,7 +6,7 @@ from .rules import Glossary
 
 
 def run(instream, outstream, glossary):
-    """逐行处理 JSONL。缺陷：同一条 id 重复出现也照处理一遍。"""
+    """逐行处理 JSONL：每行输出原样 id、替换后文本与命中次数。"""
     for line in instream:
         line = line.strip()
         if not line:
